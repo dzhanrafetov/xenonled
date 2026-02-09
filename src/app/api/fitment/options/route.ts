@@ -9,7 +9,7 @@ type Level =
   | "positions"
   | "bulbTypesByPosition";
 
-export const revalidate = 60 * 60; // 1 час
+export const revalidate = 3600; // 1 час
 
 function cachedJson(data: unknown, maxAgeSeconds = 3600) {
   return NextResponse.json(data, {
