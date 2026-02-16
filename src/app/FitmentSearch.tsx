@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { resolveBulbUrl } from "@/lib/bulbLinks";
 
 /** ---------------- Types ---------------- */
@@ -11,10 +11,33 @@ type PositionRow = {
   position: string;
 };
 
-type LoadKey = "years" | "brands" | "models" | "mods" | "positions" | "bulbTypes";
+type BulbsByTech = {
+  halogen: string[];
+  xenon: string[];
+};
+
+type LoadKey = "years" | "brands" | "models" | "mods" | "positions" | "bulbsByTech";
 type LoadingMap = Record<LoadKey, boolean>;
 
 type Option = { value: string; label: string };
+
+/** ---------------- Config ---------------- */
+const SUPPORT_PHONE = "+359 88 000 0000"; // TODO: смени с твоя реален номер
+const SUPPORT_PHONE_TEL = "+359880000000"; // TODO: смени (само цифри)
+
+/** ---------------- Top brands ---------------- */
+const TOP_BRANDS_ORDER = [
+  "MERCEDES",
+  "BMW",
+  "HYUNDAI",
+  "TOYOTA",
+  "VOLKSWAGEN",
+  "AUDI",
+  "OPEL",
+  "FORD",
+  "PEUGEOT",
+  "RENAULT",
+];
 
 /** ---------------- Utils ---------------- */
 const initialLoading: LoadingMap = {
@@ -23,15 +46,16 @@ const initialLoading: LoadingMap = {
   models: false,
   mods: false,
   positions: false,
-  bulbTypes: false,
+  bulbsByTech: false,
 };
 
 function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function useOnClickOutside(
-  ref: React.RefObject<HTMLElement | null>,
+// ✅ FIX: generic hook => няма TypeScript error с RefObject<HTMLDivElement>
+function useOnClickOutside<T extends HTMLElement>(
+  ref: React.RefObject<T | null>,
   handler: () => void
 ) {
   useEffect(() => {
@@ -59,13 +83,10 @@ function normPos(pos: string) {
   return pos.trim().toLowerCase();
 }
 
-/** Превод на Position към BG */
 function positionLabelBG(pos: string): string {
   const p = normPos(pos);
-
   if (p === "high beam") return "Дълги светлини";
   if (p === "low beam") return "Къси светлини";
-
   if (
     p === "fog lamps" ||
     p === "fog lamp" ||
@@ -75,7 +96,6 @@ function positionLabelBG(pos: string): string {
   ) {
     return "Светлини за мъгла";
   }
-
   return pos;
 }
 
@@ -84,7 +104,6 @@ function positionOrder(pos: string): number {
   const p = normPos(pos);
   if (p === "high beam") return 0;
   if (p === "low beam") return 1;
-
   if (
     p === "fog lamps" ||
     p === "fog lamp" ||
@@ -94,7 +113,6 @@ function positionOrder(pos: string): number {
   ) {
     return 2;
   }
-
   return 999;
 }
 
@@ -106,7 +124,17 @@ function positionKey(x: PositionRow) {
   return `${x.position_category ?? ""}__${x.position}`;
 }
 
-/** ---------------- UI Pieces ---------------- */
+function isHFamily(bt: string) {
+  const t = bt.trim().toUpperCase();
+  return t.startsWith("H") || t.startsWith("HB") || t === "9005" || t === "9006";
+}
+
+function isDFamily(bt: string) {
+  const t = bt.trim().toUpperCase();
+  return t.startsWith("D");
+}
+
+/** ---------------- UI pieces ---------------- */
 
 function Field({
   label,
@@ -139,8 +167,9 @@ function LoadingPill({ show }: { show?: boolean }) {
 }
 
 /**
- * Searchable dropdown (combobox-like)
- * - дизайн като снимката: отворен панел + search input + списък
+ * Searchable dropdown
+ * - Без auto-focus (за да не вдига клавиатурата на мобилен)
+ * - Panel: z-[9999] + parent overflow-visible => няма да се реже
  */
 function SearchSelect({
   value,
@@ -159,9 +188,7 @@ function SearchSelect({
   loading?: boolean;
   searchPlaceholder?: string;
 }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
@@ -180,26 +207,18 @@ function SearchSelect({
 
   function toggle() {
     if (disabled) return;
-    setOpen((s) => {
-      const next = !s;
-      if (next) {
-        // reset search when opening
-        setQ("");
-        // focus input after render
-        setTimeout(() => inputRef.current?.focus(), 0);
-      }
-      return next;
-    });
+    setOpen((s) => !s);
+    setQ("");
   }
 
   function pick(v: string) {
     onChange(v);
     setOpen(false);
+    setQ("");
   }
 
   return (
     <div ref={wrapRef} className={cx("relative", disabled && "opacity-80")}>
-      {/* Trigger */}
       <button
         type="button"
         onClick={toggle}
@@ -209,14 +228,13 @@ function SearchSelect({
           "outline-none transition",
           "focus:border-yellow-400 focus:ring-4 focus:ring-yellow-400/20",
           "disabled:bg-neutral-100",
-          "pr-10" // space for caret
+          "pr-10"
         )}
       >
-        <span className={cx("block truncate", value ? "text-neutral-950" : "text-neutral-950")}>
-          {value ? selectedLabel : placeholder /* ✅ placeholder black */}
+        <span className="block truncate text-neutral-950">
+          {value ? selectedLabel : placeholder}
         </span>
 
-        {/* caret */}
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-900">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path
@@ -232,17 +250,10 @@ function SearchSelect({
         <LoadingPill show={loading} />
       </button>
 
-      {/* Panel */}
       {open ? (
-        <div
-          className={cx(
-            "absolute left-0 right-0 z-50 mt-2 overflow-hidden rounded-2xl border border-neutral-300 bg-white shadow-xl"
-          )}
-        >
-          {/* Search box */}
+        <div className="absolute left-0 right-0 z-[9999] mt-2 overflow-hidden rounded-2xl border border-neutral-300 bg-white shadow-xl">
           <div className="border-b border-neutral-200 p-3">
             <input
-              ref={inputRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={searchPlaceholder}
@@ -253,9 +264,9 @@ function SearchSelect({
                 "focus:border-yellow-400 focus:ring-4 focus:ring-yellow-400/20"
               )}
             />
+            <div className="mt-2 text-[11px] text-neutral-500">(по желание) търси в списъка</div>
           </div>
 
-          {/* List */}
           <div className="max-h-72 overflow-auto py-2">
             {filtered.length === 0 ? (
               <div className="px-4 py-3 text-sm text-neutral-500">Няма резултати</div>
@@ -288,33 +299,150 @@ function SearchSelect({
   );
 }
 
-/** ---------------- Main Component ---------------- */
+function CallBox() {
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="text-lg font-black text-neutral-950">При вашия модел е специфично</div>
+      <div className="mt-2 text-sm text-neutral-700">
+        За този автомобил има повече от един възможен вариант. За да ви насочим
+        точно — свържете се с нас:
+      </div>
+      <a
+        href={`tel:${SUPPORT_PHONE_TEL}`}
+        className={cx(
+          "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
+          "bg-neutral-950 text-white hover:bg-neutral-800 active:bg-neutral-900",
+          "transition focus:outline-none focus:ring-4 focus:ring-neutral-400/30"
+        )}
+      >
+        Обадете се: {SUPPORT_PHONE}
+      </a>
+    </div>
+  );
+}
+
+function SingleDirectBox({ bulbType }: { bulbType: string }) {
+  const url = resolveBulbUrl(bulbType);
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="text-lg font-black text-neutral-950">Намерихме цокъл</div>
+      <div className="mt-2 text-sm text-neutral-700">
+        За вашия избор е наличен цокъл: <span className="font-extrabold">{bulbType}</span>
+      </div>
+
+      {url ? (
+        <a
+          href={url}
+          className={cx(
+            "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
+            "bg-yellow-400 text-neutral-950 hover:bg-yellow-300 active:bg-yellow-500",
+            "transition focus:outline-none focus:ring-4 focus:ring-yellow-400/30"
+          )}
+        >
+          Виж продукта
+        </a>
+      ) : (
+        <div className="mt-4 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-700">
+          Нямам линк за този цокъл още. Добави го в <b>BULB_TYPE_TO_URL</b>.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TwoChoiceBox({ halogen, xenon }: { halogen: string; xenon: string }) {
+  const hUrl = resolveBulbUrl(halogen);
+  const dUrl = resolveBulbUrl(xenon);
+
+  return (
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="rounded-2xl border border-yellow-300/70 bg-yellow-50 p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-black text-neutral-950">Жълто = халоген</div>
+            <div className="mt-1 text-sm text-neutral-700">
+              Ако фаровете ви светят в жълто, вашият цокъл е:
+              <span className="ml-2 font-extrabold">{halogen}</span>
+            </div>
+          </div>
+          <span className="rounded-xl bg-yellow-400 px-3 py-1 text-xs font-extrabold text-neutral-950">
+            ЖЪЛТО
+          </span>
+        </div>
+
+        {hUrl ? (
+          <a
+            href={hUrl}
+            className={cx(
+              "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
+              "bg-yellow-400 text-neutral-950 hover:bg-yellow-300 active:bg-yellow-500",
+              "transition focus:outline-none focus:ring-4 focus:ring-yellow-400/30"
+            )}
+          >
+            Натиснете тук
+          </a>
+        ) : (
+          <div className="mt-4 rounded-xl bg-white p-3 text-sm text-neutral-700">
+            Нямам линк за {halogen}. Добави го в <b>BULB_TYPE_TO_URL</b>.
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-black text-neutral-950">Бяло = ксенон</div>
+            <div className="mt-1 text-sm text-neutral-700">
+              Ако фаровете ви светят в бяло, вашият цокъл е:
+              <span className="ml-2 font-extrabold">{xenon}</span>
+            </div>
+          </div>
+          <span className="rounded-xl bg-neutral-950 px-3 py-1 text-xs font-extrabold text-white">
+            БЯЛО
+          </span>
+        </div>
+
+        {dUrl ? (
+          <a
+            href={dUrl}
+            className={cx(
+              "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
+              "bg-neutral-950 text-white hover:bg-neutral-800 active:bg-neutral-900",
+              "transition focus:outline-none focus:ring-4 focus:ring-neutral-400/30"
+            )}
+          >
+            Натиснете тук
+          </a>
+        ) : (
+          <div className="mt-4 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-700">
+            Нямам линк за {xenon}. Добави го в <b>BULB_TYPE_TO_URL</b>.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** ---------------- Main ---------------- */
 export default function FitmentSearch() {
-  // data lists
   const [years, setYears] = useState<number[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
   const [mods, setMods] = useState<Mod[]>([]);
   const [positions, setPositions] = useState<PositionRow[]>([]);
-  const [bulbTypes, setBulbTypes] = useState<string[]>([]);
+  const [bulbsByTech, setBulbsByTech] = useState<BulbsByTech>({ halogen: [], xenon: [] });
 
-  // selections
   const [year, setYear] = useState<number | "">("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
-
   const [modelType, setModelType] = useState<string | null>(null);
   const [bodyType, setBodyType] = useState<string | null>(null);
-
   const [posCategory, setPosCategory] = useState<string | null>(null);
   const [pos, setPos] = useState<string>("");
 
-  const [bulbType, setBulbType] = useState("");
-
-  // loading
   const [loading, setLoading] = useState<LoadingMap>(initialLoading);
 
-  // cache + abort
   const cacheRef = useRef(new Map<string, unknown>());
   const abortRef = useRef<Record<LoadKey, AbortController | null>>({
     years: null,
@@ -322,7 +450,7 @@ export default function FitmentSearch() {
     models: null,
     mods: null,
     positions: null,
-    bulbTypes: null,
+    bulbsByTech: null,
   });
 
   const modValue = useMemo(() => `${modelType ?? ""}__${bodyType ?? ""}`, [modelType, bodyType]);
@@ -339,8 +467,6 @@ export default function FitmentSearch() {
       return a.position.localeCompare(b.position);
     });
   }, [positions]);
-
-  const anyLoading = Object.values(loading).some(Boolean);
 
   function setLoadingKey(key: LoadKey, v: boolean) {
     setLoading((prev) => ({ ...prev, [key]: v }));
@@ -378,15 +504,13 @@ export default function FitmentSearch() {
     setModel("");
     setModelType(null);
     setBodyType(null);
-
     setPosCategory(null);
     setPos("");
-    setBulbType("");
+    setBulbsByTech({ halogen: [], xenon: [] });
 
     setModels([]);
     setMods([]);
     setPositions([]);
-    setBulbTypes([]);
 
     if (year === "") {
       setBrands([]);
@@ -406,14 +530,12 @@ export default function FitmentSearch() {
     setModel("");
     setModelType(null);
     setBodyType(null);
-
     setPosCategory(null);
     setPos("");
-    setBulbType("");
+    setBulbsByTech({ halogen: [], xenon: [] });
 
     setMods([]);
     setPositions([]);
-    setBulbTypes([]);
 
     if (year === "" || !brand) {
       setModels([]);
@@ -432,13 +554,11 @@ export default function FitmentSearch() {
   useEffect(() => {
     setModelType(null);
     setBodyType(null);
-
     setPosCategory(null);
     setPos("");
-    setBulbType("");
+    setBulbsByTech({ halogen: [], xenon: [] });
 
     setPositions([]);
-    setBulbTypes([]);
 
     if (year === "" || !brand || !model) {
       setMods([]);
@@ -455,12 +575,11 @@ export default function FitmentSearch() {
     })().catch(() => {});
   }, [year, brand, model]);
 
-  // positions (вид крушка)
+  // positions
   useEffect(() => {
     setPosCategory(null);
     setPos("");
-    setBulbType("");
-    setBulbTypes([]);
+    setBulbsByTech({ halogen: [], xenon: [] });
 
     if (year === "" || !brand || !model) {
       setPositions([]);
@@ -483,19 +602,15 @@ export default function FitmentSearch() {
     })().catch(() => {});
   }, [year, brand, model, modValue]);
 
-  // bulbTypes for selected position
+  // bulbs by tech after position
   useEffect(() => {
-    setBulbType("");
-
-    if (year === "" || !brand || !model || !pos) {
-      setBulbTypes([]);
-      return;
-    }
+    setBulbsByTech({ halogen: [], xenon: [] });
+    if (year === "" || !brand || !model || !pos) return;
 
     (async () => {
-      const key = `bulbtypes|${year}|${brand}|${model}|${modelType ?? ""}|${bodyType ?? ""}|${posCategory ?? ""}|${pos}`;
+      const key = `bulbsByTech|${year}|${brand}|${model}|${modelType ?? ""}|${bodyType ?? ""}|${posCategory ?? ""}|${pos}`;
       const params = new URLSearchParams({
-        level: "bulbTypesByPosition",
+        level: "bulbsByPosition",
         year: String(year),
         brand,
         model,
@@ -505,34 +620,30 @@ export default function FitmentSearch() {
         position: pos,
       });
       const url = `/api/fitment/options?${params.toString()}`;
-      const data = await cachedGet<string[]>(key, url, "bulbTypes");
-      setBulbTypes(data);
+      const data = await cachedGet<BulbsByTech>(key, url, "bulbsByTech");
+      setBulbsByTech(data);
     })().catch(() => {});
   }, [year, brand, model, modValue, selectedPositionValue]);
-
-  function onSearch() {
-    if (!bulbType) return;
-    const url = resolveBulbUrl(bulbType);
-    if (url) window.location.href = url;
-    else alert(`Нямам зададен линк за тип крушка: ${bulbType}. Добави го в BULB_TYPE_TO_URL.`);
-  }
 
   function onClear() {
     setYear("");
   }
 
-  const canSearch = year !== "" && brand && model && pos && bulbType;
-
-  /** -------- Options mapping for SearchSelect -------- */
+  /** Options for dropdowns */
   const yearOptions: Option[] = useMemo(
     () => years.map((y) => ({ value: String(y), label: String(y) })),
     [years]
   );
 
-  const brandOptions: Option[] = useMemo(
-    () => brands.map((b) => ({ value: b, label: b })),
-    [brands]
-  );
+  const brandOptions: Option[] = useMemo(() => {
+    const all = [...brands];
+    const topSet = new Set(TOP_BRANDS_ORDER);
+
+    const top = TOP_BRANDS_ORDER.filter((b) => all.includes(b));
+    const rest = all.filter((b) => !topSet.has(b)).sort((a, b) => a.localeCompare(b));
+
+    return [...top, ...rest].map((b) => ({ value: b, label: b }));
+  }, [brands]);
 
   const modelOptions: Option[] = useMemo(
     () => models.map((m) => ({ value: m, label: m })),
@@ -554,20 +665,57 @@ export default function FitmentSearch() {
     });
   }, [positionsSorted]);
 
-  const bulbTypeOptions: Option[] = useMemo(
-    () => bulbTypes.map((bt) => ({ value: bt, label: bt })),
-    [bulbTypes]
-  );
+  /** ---------------- RESULT LOGIC ---------------- */
+  const showResult = year !== "" && brand && model && pos;
+
+  const hal = bulbsByTech.halogen ?? [];
+  const xen = bulbsByTech.xenon ?? [];
+
+  const allUnique = useMemo(() => Array.from(new Set([...hal, ...xen])), [hal, xen]);
+
+  const singleBulb = !loading.bulbsByTech && allUnique.length === 1 ? allUnique[0] : null;
+
+  const hasHal = hal.length > 0;
+  const hasXen = xen.length > 0;
+
+  const canTwoChoice =
+    !loading.bulbsByTech &&
+    hasHal &&
+    hasXen &&
+    hal.length === 1 &&
+    xen.length === 1 &&
+    isHFamily(hal[0]) &&
+    isDFamily(xen[0]);
+
+  // ✅ ONLY when there are 2 options (H/HB + D)
+  const showImportant = showResult && !loading.bulbsByTech && !singleBulb && canTwoChoice;
+
+  const onlyHalogen = !loading.bulbsByTech && hasHal && !hasXen;
+  const twoPlusH = onlyHalogen && hal.length >= 2 && hal.every((b) => isHFamily(b));
+
+  const onlyXenon = !loading.bulbsByTech && hasXen && !hasHal;
+  const twoPlusD = onlyXenon && xen.length >= 2 && xen.every((b) => isDFamily(b));
+
+  const ambiguous =
+    showResult &&
+    !loading.bulbsByTech &&
+    !singleBulb &&
+    !canTwoChoice &&
+    !twoPlusH &&
+    !twoPlusD &&
+    allUnique.length > 0;
 
   return (
     <section className="overflow-visible rounded-2xl border border-neutral-200 bg-white shadow-sm">
       <div className="bg-neutral-950 px-6 py-6 text-center">
         <div className="mx-auto inline-flex items-center gap-3">
           <span className="h-2.5 w-2.5 rounded-full bg-yellow-400" />
-          <h1 className="text-2xl font-black tracking-wide text-white md:text-3xl">ТЪРСИ ПО…</h1>
+          <h1 className="text-2xl font-black tracking-wide text-white md:text-3xl">
+            ТЪРСИ ПО…
+          </h1>
         </div>
         <p className="mt-2 text-sm text-neutral-300">
-          Избери автомобил и светлини (дълги/къси/мъгла), после цокъл.
+          Изберете автомобил и вид светлини. Ние ще ви покажем правилния цокъл.
         </p>
       </div>
 
@@ -579,13 +727,11 @@ export default function FitmentSearch() {
               onChange={(v) => setYear(v ? Number(v) : "")}
               options={yearOptions}
               placeholder={loading.years ? "Зареждане..." : "Избери Година"}
-              disabled={false}
               loading={loading.years}
-              searchPlaceholder="Search"
             />
           </Field>
 
-          <Field label="МАРКА">
+          <Field label="МАРКА" hint="(топ марки най-отгоре)">
             <SearchSelect
               value={brand}
               onChange={(v) => setBrand(v)}
@@ -599,7 +745,6 @@ export default function FitmentSearch() {
               }
               disabled={year === "" || loading.brands}
               loading={loading.brands}
-              searchPlaceholder="Search"
             />
           </Field>
 
@@ -617,11 +762,10 @@ export default function FitmentSearch() {
               }
               disabled={!brand || loading.models}
               loading={loading.models}
-              searchPlaceholder="Search"
             />
           </Field>
 
-          <Field label="МОДИФИКАЦИЯ" hint="(тип / купе)">
+          <Field label="МОДИФИКАЦИЯ" hint="(двигател/купе)">
             <SearchSelect
               value={modValue === "__" ? "" : modValue}
               onChange={(v) => {
@@ -644,7 +788,6 @@ export default function FitmentSearch() {
               }
               disabled={!model || loading.mods}
               loading={loading.mods}
-              searchPlaceholder="Search"
             />
           </Field>
         </div>
@@ -673,44 +816,59 @@ export default function FitmentSearch() {
               }
               disabled={year === "" || !brand || !model || loading.positions}
               loading={loading.positions}
-              searchPlaceholder="Search"
             />
           </Field>
 
-          <Field label="ЦОКЪЛ" hint="(H7/H11/D1S...)">
-            <SearchSelect
-              value={bulbType}
-              onChange={(v) => setBulbType(v)}
-              options={bulbTypeOptions}
-              placeholder={
-                !pos
-                  ? "Избери Цокъл"
-                  : loading.bulbTypes
-                  ? "Зареждане..."
-                  : "Избери Цокъл"
-              }
-              disabled={!pos || loading.bulbTypes}
-              loading={loading.bulbTypes}
-              searchPlaceholder="Search"
-            />
-          </Field>
+          {/* ✅ Само ако има 2 варианта */}
+          {showImportant ? (
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+              <div className="text-sm font-extrabold text-neutral-900">Важно</div>
+              <div className="mt-2 text-sm text-neutral-700">
+                Има 2 варианта за вашия модел:
+                <ul className="mt-2 list-disc pl-5">
+                  <li>
+                    <b>Жълто</b> = халоген (H/HB…)
+                  </li>
+                  <li>
+                    <b>Бяло</b> = ксенон (D…)
+                  </li>
+                </ul>
+                Изберете според цвета на фаровете.
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <button
-            className={cx(
-              "inline-flex items-center justify-center rounded-xl px-10 py-3 text-lg font-extrabold",
-              "bg-yellow-400 text-neutral-950 shadow-sm transition",
-              "hover:bg-yellow-300 active:bg-yellow-500",
-              "focus:outline-none focus:ring-4 focus:ring-yellow-400/30",
-              "disabled:cursor-not-allowed disabled:opacity-40"
-            )}
-            onClick={onSearch}
-            disabled={!canSearch}
-          >
-            {anyLoading ? "Зарежда..." : "Търси"}
-          </button>
+        {showResult ? (
+          <div className="mt-8 space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-black text-neutral-950">Резултат</div>
+              {loading.bulbsByTech ? (
+                <div className="text-sm font-bold text-neutral-600">Зареждане…</div>
+              ) : null}
+            </div>
 
+            {!loading.bulbsByTech && singleBulb ? <SingleDirectBox bulbType={singleBulb} /> : null}
+
+            {!loading.bulbsByTech && !singleBulb && canTwoChoice ? (
+              <TwoChoiceBox halogen={hal[0]} xenon={xen[0]} />
+            ) : null}
+
+            {!loading.bulbsByTech && !singleBulb && !canTwoChoice && (twoPlusH || twoPlusD) ? (
+              <CallBox />
+            ) : null}
+
+            {!loading.bulbsByTech && ambiguous ? <CallBox /> : null}
+
+            {!loading.bulbsByTech && allUnique.length === 0 ? (
+              <div className="rounded-2xl border border-neutral-200 bg-white p-5 text-sm text-neutral-700 shadow-sm">
+                Няма намерени цокли за избраната конфигурация. Опитай друга модификация/вид светлини.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <button
             className={cx(
               "inline-flex items-center justify-center rounded-xl px-10 py-3 text-lg font-extrabold",

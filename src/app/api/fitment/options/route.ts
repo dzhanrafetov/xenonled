@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 
-type Level =
-  | "years"
-  | "brands"
-  | "models"
-  | "mods"
-  | "positions"
-  | "bulbTypesByPosition";
+type Level = "years" | "brands" | "models" | "mods" | "positions" | "bulbsByPosition";
 
 export const revalidate = 3600; // 1 час
 
@@ -85,7 +79,7 @@ export async function GET(req: Request) {
       return cachedJson(r.rows, 6 * 3600);
     }
 
-    // ✅ ВИД КРУШКА (позиции) - само къси/дълги/мъгла
+    // ✅ ВИД КРУШКА (позиции) - само дълги/къси/мъгла
     if (level === "positions") {
       if (!year || !brand || !model) return cachedJson([]);
 
@@ -100,13 +94,13 @@ export async function GET(req: Request) {
           and (body_type is not distinct from $5)
           and position is not null
           and lower(position) in (
-            'low beam',
             'high beam',
+            'low beam',
             'fog lamps',
             'fog light',
-            'front fog light'
+            'front fog light',
+            'front fog lights'
           )
-        order by position asc
         `,
         [Number(year), brand, model, modelType || null, bodyType || null]
       );
@@ -114,23 +108,24 @@ export async function GET(req: Request) {
       return cachedJson(r.rows, 6 * 3600);
     }
 
-    // ✅ ЦОКЪЛ (H7/H11/D1S...) за избраната позиция
-    if (level === "bulbTypesByPosition") {
-      if (!year || !brand || !model || !position) return cachedJson([]);
+    // ✅ Връща цокли групирани в halogen/xenon за избраната позиция
+    if (level === "bulbsByPosition") {
+      if (!year || !brand || !model || !position) {
+        return cachedJson({ halogen: [], xenon: [] });
+      }
 
       const r = await client.query(
         `
-        select distinct bulb_type
+        select distinct bulb_type, technology
         from bulb_fitment
         where model_year = $1
           and brand = $2
           and model_name = $3
           and (model_type_name is not distinct from $4)
           and (body_type is not distinct from $5)
-          and (position_category is not distinct from $6)
+          and ($6 = '' or position_category is not distinct from $6) -- category опционална
           and position = $7
           and bulb_type is not null
-        order by bulb_type asc
         `,
         [
           Number(year),
@@ -138,12 +133,43 @@ export async function GET(req: Request) {
           model,
           modelType || null,
           bodyType || null,
-          positionCategory || null,
+          positionCategory ?? "",
           position,
         ]
       );
 
-      return cachedJson(r.rows.map((x) => x.bulb_type), 6 * 3600);
+      const halogen = new Set<string>();
+      const xenon = new Set<string>();
+
+      for (const row of r.rows as Array<{ bulb_type: string; technology: string | null }>) {
+        const bt = row.bulb_type?.trim();
+        if (!bt) continue;
+
+        const tech = (row.technology ?? "").toLowerCase();
+
+        // 1) ако technology е ясна
+        if (tech.includes("halogen")) {
+          halogen.add(bt);
+          continue;
+        }
+        if (tech.includes("xenon")) {
+          xenon.add(bt);
+          continue;
+        }
+
+        // 2) иначе: инференция по цокъл
+        // D* обикновено е ксенон
+        if (bt.toUpperCase().startsWith("D")) xenon.add(bt);
+        else halogen.add(bt);
+      }
+
+      return cachedJson(
+        {
+          halogen: Array.from(halogen).sort((a, b) => a.localeCompare(b)),
+          xenon: Array.from(xenon).sort((a, b) => a.localeCompare(b)),
+        },
+        6 * 3600
+      );
     }
 
     return NextResponse.json({ error: "invalid level" }, { status: 400 });
