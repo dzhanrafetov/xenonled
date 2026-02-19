@@ -22,8 +22,9 @@ type LoadingMap = Record<LoadKey, boolean>;
 type Option = { value: string; label: string };
 
 /** ---------------- Config ---------------- */
-const SUPPORT_PHONE = "+359 88 000 0000"; // TODO: смени с твоя реален номер
-const SUPPORT_PHONE_TEL = "+359880000000"; // TODO: смени (само цифри)
+// ТУК ползвам номера от твоя UI
+const SUPPORT_PHONE = "089 985 1623";
+const SUPPORT_PHONE_TEL = "0899851623";
 
 /** ---------------- Top brands ---------------- */
 const TOP_BRANDS_ORDER = [
@@ -53,7 +54,6 @@ function cx(...classes: Array<string | false | undefined | null>) {
   return classes.filter(Boolean).join(" ");
 }
 
-// ✅ FIX: generic hook => няма TypeScript error с RefObject<HTMLDivElement>
 function useOnClickOutside<T extends HTMLElement>(
   ref: React.RefObject<T | null>,
   handler: () => void
@@ -99,7 +99,6 @@ function positionLabelBG(pos: string): string {
   return pos;
 }
 
-/** Подредба: Дълги -> Къси -> Мъгла */
 function positionOrder(pos: string): number {
   const p = normPos(pos);
   if (p === "high beam") return 0;
@@ -166,11 +165,6 @@ function LoadingPill({ show }: { show?: boolean }) {
   );
 }
 
-/**
- * Searchable dropdown
- * - Без auto-focus (за да не вдига клавиатурата на мобилен)
- * - Panel: z-[9999] + parent overflow-visible => няма да се реже
- */
 function SearchSelect({
   value,
   onChange,
@@ -231,9 +225,7 @@ function SearchSelect({
           "pr-10"
         )}
       >
-        <span className="block truncate text-neutral-950">
-          {value ? selectedLabel : placeholder}
-        </span>
+        <span className="block truncate text-neutral-950">{value ? selectedLabel : placeholder}</span>
 
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-900">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -279,11 +271,8 @@ function SearchSelect({
                     type="button"
                     onClick={() => pick(o.value)}
                     className={cx(
-                      "flex w-full items-center justify-between px-4 py-3 text-left text-base",
-                      "transition",
-                      active
-                        ? "bg-neutral-950 text-white"
-                        : "text-neutral-950 hover:bg-neutral-100"
+                      "flex w-full items-center justify-between px-4 py-3 text-left text-base transition",
+                      active ? "bg-neutral-950 text-white" : "text-neutral-950 hover:bg-neutral-100"
                     )}
                   >
                     <span className="truncate">{o.label}</span>
@@ -304,9 +293,39 @@ function CallBox() {
     <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
       <div className="text-lg font-black text-neutral-950">При вашия модел е специфично</div>
       <div className="mt-2 text-sm text-neutral-700">
-        За този автомобил има повече от един възможен вариант. За да ви насочим
-        точно — свържете се с нас:
+        За този автомобил има повече от един възможен вариант. За да ви насочим точно — свържете
+        се с нас:
+        <br />
+        Ще ви обясним всичко необходимо за вашия автомобил още сега!
       </div>
+      <a
+        href={`tel:${SUPPORT_PHONE_TEL}`}
+        className={cx(
+          "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
+          "bg-neutral-950 text-white hover:bg-neutral-800 active:bg-neutral-900",
+          "transition focus:outline-none focus:ring-4 focus:ring-neutral-400/30"
+        )}
+      >
+        Обадете се: {SUPPORT_PHONE}
+      </a>
+    </div>
+  );
+}
+
+/** ✅ НОВ: когато няма URL (липсва линк в BULB_TYPE_TO_URL) */
+function RareCallBox({ bulbType }: { bulbType: string }) {
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <div className="text-lg font-black text-neutral-950">
+        Вашият автомобил е с изключително редки крушки!
+      </div>
+      <div className="mt-2 text-sm text-neutral-700">
+        Трябват ви крушки с цокъл: <span className="font-extrabold">{bulbType}</span>
+           <br/>За да ви насочим точно — свържете се с нас:
+
+      </div>
+
+
       <a
         href={`tel:${SUPPORT_PHONE_TEL}`}
         className={cx(
@@ -324,29 +343,26 @@ function CallBox() {
 function SingleDirectBox({ bulbType }: { bulbType: string }) {
   const url = resolveBulbUrl(bulbType);
 
+  // ✅ Ако няма линк -> показваме “редки крушки” + телефон
+  if (!url) return <RareCallBox bulbType={bulbType} />;
+
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <div className="text-lg font-black text-neutral-950">Намерихме цокъл</div>
+      <div className="text-lg font-black text-neutral-950">Имаме точните LED крушки за вашия автомобил!</div>
       <div className="mt-2 text-sm text-neutral-700">
-        За вашия избор е наличен цокъл: <span className="font-extrabold">{bulbType}</span>
+        Трябват ви крушки с цокъл: <span className="font-extrabold">{bulbType}</span>
       </div>
 
-      {url ? (
-        <a
-          href={url}
-          className={cx(
-            "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
-            "bg-yellow-400 text-neutral-950 hover:bg-yellow-300 active:bg-yellow-500",
-            "transition focus:outline-none focus:ring-4 focus:ring-yellow-400/30"
-          )}
-        >
-          Виж продукта
-        </a>
-      ) : (
-        <div className="mt-4 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-700">
-          Нямам линк за този цокъл още. Добави го в <b>BULB_TYPE_TO_URL</b>.
-        </div>
-      )}
+      <a
+        href={url}
+        className={cx(
+          "mt-4 inline-flex w-full items-center justify-center rounded-xl px-4 py-3 text-base font-extrabold",
+          "bg-yellow-400 text-neutral-950 hover:bg-yellow-300 active:bg-yellow-500",
+          "transition focus:outline-none focus:ring-4 focus:ring-yellow-400/30"
+        )}
+      >
+        Кликни тук
+      </a>
     </div>
   );
 }
@@ -357,13 +373,15 @@ function TwoChoiceBox({ halogen, xenon }: { halogen: string; xenon: string }) {
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      {/* HALOGEN */}
       <div className="rounded-2xl border border-yellow-300/70 bg-yellow-50 p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-black text-neutral-950">Жълто = халоген</div>
+            <div className="text-lg font-black text-neutral-950">LED система за коли с жълти крушки</div>
             <div className="mt-1 text-sm text-neutral-700">
-              Ако фаровете ви светят в жълто, вашият цокъл е:
-              <span className="ml-2 font-extrabold">{halogen}</span>
+              Ако фаровете ви светят в жълто, значи сте с фабричен халоген.
+              <br />
+              Вашият цокъл е:<span className="ml-2 font-extrabold">{halogen}</span>
             </div>
           </div>
           <span className="rounded-xl bg-yellow-400 px-3 py-1 text-xs font-extrabold text-neutral-950">
@@ -383,19 +401,21 @@ function TwoChoiceBox({ halogen, xenon }: { halogen: string; xenon: string }) {
             Натиснете тук
           </a>
         ) : (
-          <div className="mt-4 rounded-xl bg-white p-3 text-sm text-neutral-700">
-            Нямам линк за {halogen}. Добави го в <b>BULB_TYPE_TO_URL</b>.
+          <div className="mt-4">
+            <RareCallBox bulbType={halogen} />
           </div>
         )}
       </div>
 
+      {/* XENON */}
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-black text-neutral-950">Бяло = ксенон</div>
+            <div className="text-lg font-black text-neutral-950">LED система за коли с бели крушки</div>
             <div className="mt-1 text-sm text-neutral-700">
-              Ако фаровете ви светят в бяло, вашият цокъл е:
-              <span className="ml-2 font-extrabold">{xenon}</span>
+              Ако фаровете ви светят в бяло, значи сте с фабричен Xenon.
+              <br />
+              Вашият цокъл е:<span className="ml-2 font-extrabold">{xenon}</span>
             </div>
           </div>
           <span className="rounded-xl bg-neutral-950 px-3 py-1 text-xs font-extrabold text-white">
@@ -415,8 +435,8 @@ function TwoChoiceBox({ halogen, xenon }: { halogen: string; xenon: string }) {
             Натиснете тук
           </a>
         ) : (
-          <div className="mt-4 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-700">
-            Нямам линк за {xenon}. Добави го в <b>BULB_TYPE_TO_URL</b>.
+          <div className="mt-4">
+            <RareCallBox bulbType={xenon} />
           </div>
         )}
       </div>
@@ -454,10 +474,7 @@ export default function FitmentSearch() {
   });
 
   const modValue = useMemo(() => `${modelType ?? ""}__${bodyType ?? ""}`, [modelType, bodyType]);
-  const selectedPositionValue = useMemo(
-    () => `${posCategory ?? ""}__${pos}`,
-    [posCategory, pos]
-  );
+  const selectedPositionValue = useMemo(() => `${posCategory ?? ""}__${pos}`, [posCategory, pos]);
 
   const positionsSorted = useMemo(() => {
     return [...positions].sort((a, b) => {
@@ -645,10 +662,7 @@ export default function FitmentSearch() {
     return [...top, ...rest].map((b) => ({ value: b, label: b }));
   }, [brands]);
 
-  const modelOptions: Option[] = useMemo(
-    () => models.map((m) => ({ value: m, label: m })),
-    [models]
-  );
+  const modelOptions: Option[] = useMemo(() => models.map((m) => ({ value: m, label: m })), [models]);
 
   const modOptions: Option[] = useMemo(() => {
     return mods.map((x) => {
@@ -737,11 +751,7 @@ export default function FitmentSearch() {
               onChange={(v) => setBrand(v)}
               options={brandOptions}
               placeholder={
-                year === ""
-                  ? "Избери Марка"
-                  : loading.brands
-                  ? "Зареждане..."
-                  : "Избери Марка"
+                year === "" ? "Избери Марка" : loading.brands ? "Зареждане..." : "Избери Марка"
               }
               disabled={year === "" || loading.brands}
               loading={loading.brands}
@@ -753,13 +763,7 @@ export default function FitmentSearch() {
               value={model}
               onChange={(v) => setModel(v)}
               options={modelOptions}
-              placeholder={
-                !brand
-                  ? "Избери Модел"
-                  : loading.models
-                  ? "Зареждане..."
-                  : "Избери Модел"
-              }
+              placeholder={!brand ? "Избери Модел" : loading.models ? "Зареждане..." : "Избери Модел"}
               disabled={!brand || loading.models}
               loading={loading.models}
             />
@@ -780,11 +784,7 @@ export default function FitmentSearch() {
               }}
               options={modOptions}
               placeholder={
-                !model
-                  ? "Избери Модификация"
-                  : loading.mods
-                  ? "Зареждане..."
-                  : "Избери Модификация"
+                !model ? "Избери Модификация" : loading.mods ? "Зареждане..." : "Избери Модификация"
               }
               disabled={!model || loading.mods}
               loading={loading.mods}
@@ -827,13 +827,12 @@ export default function FitmentSearch() {
                 Има 2 варианта за вашия модел:
                 <ul className="mt-2 list-disc pl-5">
                   <li>
-                    <b>Жълто</b> = халоген (H/HB…)
+                    <b>Кликни в жълтото</b> - Ако автомобилът ви е фабрично с жълти крушки
                   </li>
                   <li>
-                    <b>Бяло</b> = ксенон (D…)
+                    <b>Кликни в бялото</b> - Ако автомобилът ви е фабрично с бели крушки
                   </li>
                 </ul>
-                Изберете според цвета на фаровете.
               </div>
             </div>
           ) : null}
@@ -843,9 +842,7 @@ export default function FitmentSearch() {
           <div className="mt-8 space-y-6">
             <div className="flex items-center justify-between">
               <div className="text-lg font-black text-neutral-950">Резултат</div>
-              {loading.bulbsByTech ? (
-                <div className="text-sm font-bold text-neutral-600">Зареждане…</div>
-              ) : null}
+              {loading.bulbsByTech ? <div className="text-sm font-bold text-neutral-600">Зареждане…</div> : null}
             </div>
 
             {!loading.bulbsByTech && singleBulb ? <SingleDirectBox bulbType={singleBulb} /> : null}
